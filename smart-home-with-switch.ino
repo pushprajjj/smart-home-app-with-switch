@@ -17,7 +17,9 @@ const char* mqtt_pass = "testpass";
 String baseTopic = "smartHome/" + String(mqtt_user) + "/";
 
 // ---------- Relay Pins ----------
-int relayPins[8] = {5, 26, 18, 19, 21, 22, 23, 25};
+int relayPins[8] = {5, 26, 18, 19, 21, 22, 23, 25};  // your relay pins
+int switchPins[8] = {32, 33, 34, 35, 36, 39, 14, 27};  // your manual switches
+int lastSwitchStates[8];
 
 // ---------- Objects ----------
 WebServer server(80);
@@ -101,45 +103,40 @@ void callback(char* topic, byte* payload, unsigned int length) {
   String msg;
   for (int i = 0; i < length; i++) msg += (char)payload[i];
 
-  if (String(topic) == baseTopic) {
-    Serial.println("Received bulk relay command:");
-    Serial.println(msg);
+  Serial.print("Incoming topic: ");
+  Serial.println(topic);
+  Serial.print("Payload: ");
+  Serial.println(msg);
 
-    int relayIndex = -1;
-    int start = 0;
+  String topicStr = String(topic);
 
-    // Process line-by-line
-    while (start < msg.length()) {
-      int end = msg.indexOf('\n', start);
-      if (end == -1) end = msg.length();
+  // Check if topic starts with your base path
+  if (topicStr.startsWith("smartHome/device_1/relay")) {
+    // Extract relay number
+    int relayNum = topicStr.substring(strlen("smartHome/device_1/relay")).toInt();
 
-      String line = msg.substring(start, end);
-      start = end + 1;
-
-      line.trim(); // remove leading/trailing whitespace
-      if (line.startsWith("relay")) {
-        int eq = line.indexOf('=');
-        if (eq != -1) {
-          String key = line.substring(0, eq);
-          String value = line.substring(eq + 1);
-          value.trim();
-          int index = key.substring(5).toInt(); // from "relay1" → 1
-          if (index >= 1 && index <= 8) {
-            digitalWrite(relayPins[index - 1], value == "ON" ? LOW : HIGH);
-            Serial.printf("Relay %d → %s\n", index, value.c_str());
-          }
-        }
+    if (relayNum >= 1 && relayNum <= 8) {
+      // Update the actual relay
+      int relayPin = relayPins[relayNum - 1];
+      if (msg == "ON") {
+        digitalWrite(relayPin, LOW);  // Active LOW
+      } else if (msg == "OFF") {
+        digitalWrite(relayPin, HIGH);
       }
+
+      Serial.printf("Relay %d set to %s\n", relayNum, msg.c_str());
     }
   }
 }
+
+
 
 void reconnectMQTT() {
   while (!client.connected()) {
     Serial.print("Connecting to MQTT...");
     if (client.connect(mqtt_user, mqtt_user, mqtt_pass)) {
       Serial.println("connected");
-      client.subscribe(baseTopic.c_str());
+      client.subscribe((baseTopic + "#").c_str());
     } else {
       Serial.print("failed (");
       Serial.print(client.state());
@@ -154,10 +151,14 @@ void setup() {
   Serial.begin(115200);
   EEPROM.begin(EEPROM_SIZE);
 
-  for (int i = 0; i < 8; i++) {
-    pinMode(relayPins[i], OUTPUT);
-    digitalWrite(relayPins[i], HIGH); // default OFF (active LOW)
-  }
+for (int i = 0; i < 8; i++) {
+  pinMode(relayPins[i], OUTPUT);
+  digitalWrite(relayPins[i], HIGH); // OFF by default (active LOW)
+
+  pinMode(switchPins[i], INPUT_PULLUP);
+  lastSwitchStates[i] = digitalRead(switchPins[i]);
+}
+
 
   if (!connectToWiFiFromEEPROM()) {
     startAPMode();
@@ -174,6 +175,30 @@ void setup() {
 // ---------- Loop ----------
 void loop() {
   dnsServer.processNextRequest();
+
+for (int i = 0; i < 8; i++) {
+  int currentState = digitalRead(switchPins[i]);
+  if (lastSwitchStates[i] == HIGH && currentState == LOW) {
+    int relayPin = relayPins[i];
+    bool currentRelayState = digitalRead(relayPin); // HIGH = OFF
+    digitalWrite(relayPin, !currentRelayState); // Toggle
+
+    // Build topic like: smartHome/device_1/relay1=ON
+    String topic = baseTopic + "relay" + String(i + 1) + "=" + (!currentRelayState ? "ON" : "OFF");
+
+    if (client.connected()) {
+      client.publish(topic.c_str(), "");
+    }
+
+    Serial.printf("Manual Toggle: Relay %d → %s\n", i + 1, (!currentRelayState ? "ON" : "OFF"));
+
+    delay(300);  // Debounce
+  }
+  lastSwitchStates[i] = currentState;
+}
+
+
+
 
   if (WiFi.status() != WL_CONNECTED) {
     server.handleClient();
