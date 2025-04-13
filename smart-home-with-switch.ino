@@ -4,10 +4,8 @@
 #include <PubSubClient.h>
 #include <DNSServer.h>
 
-
 DNSServer dnsServer;
 const byte DNS_PORT = 53;
- 
 
 // ---------- Config ----------
 #define EEPROM_SIZE 96
@@ -19,14 +17,12 @@ const char* mqtt_pass = "testpass";
 
 String baseTopic = "smartHome/" + String(mqtt_user) + "/";
 
-// ---------- Relay Pins ----------
-int relayPins[8] = {16, 17, 18, 19, 21, 22, 23, 25};
-
-
 // ---------- Objects ----------
 WebServer server(80);
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+
 
 // ---------- Functions ----------
 void saveWiFiCredentials(String ssid, String pass) {
@@ -43,7 +39,6 @@ void loadWiFiCredentials(char* ssid, char* pass) {
   for (int i = 0; i < 64; i++) pass[i] = EEPROM.read(32 + i);
   pass[64] = '\0'; // Ensure null-terminated
 }
-
 
 bool connectToWiFiFromEEPROM() {
   char ssid[33] = {0};
@@ -112,41 +107,37 @@ void startAPMode() {
 }
 
 
+// ---------- Setup & Loop ----------
+void setup() {
+  Serial.begin(115200);
+  EEPROM.begin(EEPROM_SIZE);
 
-void callback(char* topic, byte* message, unsigned int length) {
-  String msg = "";
-  for (int i = 0; i < length; i++) msg += (char)message[i];
 
-  String statusTopic = baseTopic + "status"; // Topic for relay statuses
+  connectToWiFiFromEEPROM();  // Try connecting anyway
 
-  // Check if the received topic is the status topic
-  if (String(topic) == statusTopic) {
-    // Split the message into relay states
-    int relayIndex = 0;
-    int startIndex = 0;
-    for (int i = 0; i <= msg.length(); i++) {
-      if (msg.charAt(i) == ',' || i == msg.length()) {
-        String state = msg.substring(startIndex, i);
-        if (relayIndex < 8) {
-          // Update the relay state based on the received "ON" or "OFF" message
-          digitalWrite(relayPins[relayIndex], state == "ON" ? LOW : HIGH);
-          relayIndex++;
-        }
-        startIndex = i + 1;
-      }
-    }
+  if (WiFi.status() != WL_CONNECTED) {
+    startAPMode(); 
+  } else {
+    Serial.print("Connected to ");
+    Serial.println(WiFi.SSID());
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+    client.setServer(mqtt_server, mqtt_port);
+    
   }
 }
+
+
 
 void reconnectMQTT() {
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     if (client.connect(mqtt_user, mqtt_user, mqtt_pass)) {
-      Serial.println("connected");
-      for (int i = 0; i < 8; i++) {
-        client.subscribe((baseTopic + String(i + 1)).c_str());
-      }
-      client.subscribe((baseTopic + "status").c_str());  // Subscribe to the status topic
+      Serial.println("connected to iist mqtt");
+           
+       client.publish("smartHome/device_1/", "hii", true);
+    
+//      client.subscribe((baseTopic + "status").c_str());  // Subscribe to the status topic
     } else {
       Serial.print(" failed, rc=");
       Serial.print(client.state());
@@ -155,39 +146,7 @@ void reconnectMQTT() {
   }
 }
 
-void publishRelayStatus() {
-  String relayState = "";
-  for (int i = 0; i < 8; i++) {
-    relayState += (digitalRead(relayPins[i]) == LOW ? "ON" : "OFF");
-    if (i < 7) relayState += ",";  // Add comma between states
-  }
-  client.publish((baseTopic + "status").c_str(), relayState.c_str(), true);  // Publish with retention
-}
 
-
-// ---------- Setup & Loop ----------
-void setup() {
-  Serial.begin(115200);
-  EEPROM.begin(EEPROM_SIZE);
-
-  for (int i = 0; i < 8; i++) {
-    pinMode(relayPins[i], OUTPUT);
-    digitalWrite(relayPins[i], HIGH);
-  }
-
-  connectToWiFiFromEEPROM();  // Try connecting anyway
-
-  if (WiFi.status() != WL_CONNECTED) {
-    startAPMode(); // ✅ Go to AP Mode if WiFi isn't actually connected
-  } else {
-    Serial.print("Connected to ");
-    Serial.println(WiFi.SSID());
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
-    client.setServer(mqtt_server, mqtt_port);
-    client.setCallback(callback);
-  }
-}
 
 
 void loop() {
@@ -198,7 +157,9 @@ void loop() {
   } else {
     if (!client.connected()) reconnectMQTT();
     client.loop();
-    // Periodically publish relay states
-    publishRelayStatus();
+   
   }
+
+
+
 }
