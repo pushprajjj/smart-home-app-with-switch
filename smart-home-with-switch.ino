@@ -9,22 +9,22 @@ const byte DNS_PORT = 53;
 
 // ---------- Config ----------
 #define EEPROM_SIZE 96
-const char* mqtt_server = "server.iistbihar.com"; // Change to your MQTT broker IP
+const char* mqtt_server = "server.iistbihar.com";
 const int mqtt_port = 1883;
-
 const char* mqtt_user = "device_1";
 const char* mqtt_pass = "testpass";
 
 String baseTopic = "smartHome/" + String(mqtt_user) + "/";
+
+// ---------- Relay Pins ----------
+int relayPins[8] = {5, 26, 18, 19, 21, 22, 23, 25};
 
 // ---------- Objects ----------
 WebServer server(80);
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-
-
-// ---------- Functions ----------
+// ---------- EEPROM ----------
 void saveWiFiCredentials(String ssid, String pass) {
   EEPROM.begin(EEPROM_SIZE);
   for (int i = 0; i < 32; i++) EEPROM.write(i, i < ssid.length() ? ssid[i] : 0);
@@ -35,9 +35,9 @@ void saveWiFiCredentials(String ssid, String pass) {
 void loadWiFiCredentials(char* ssid, char* pass) {
   EEPROM.begin(EEPROM_SIZE);
   for (int i = 0; i < 32; i++) ssid[i] = EEPROM.read(i);
-  ssid[32] = '\0'; // Ensure null-terminated
+  ssid[32] = '\0';
   for (int i = 0; i < 64; i++) pass[i] = EEPROM.read(32 + i);
-  pass[64] = '\0'; // Ensure null-terminated
+  pass[64] = '\0';
 }
 
 bool connectToWiFiFromEEPROM() {
@@ -46,19 +46,16 @@ bool connectToWiFiFromEEPROM() {
   loadWiFiCredentials(ssid, pass);
   if (strlen(ssid) == 0) return false;
 
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
   WiFi.begin(ssid, pass);
-
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println();
   return WiFi.status() == WL_CONNECTED;
 }
 
+// ---------- Web Config ----------
 void handleRoot() {
   String html = "<html><body><h2>ESP32 WiFi Config</h2>"
                 "<form action='/save' method='post'>"
@@ -81,18 +78,12 @@ void handleSave() {
 }
 
 void startAPMode() {
-  String apSSID = "SMART_HOME_" + String(mqtt_user);  // Concatenate properly
-  WiFi.softAP(apSSID.c_str());  // Convert to C-string
+  String apSSID = "SMART_HOME_" + String(mqtt_user);
+  WiFi.softAP(apSSID.c_str());
 
   IPAddress IP = WiFi.softAPIP();
+  dnsServer.start(DNS_PORT, "*", IP);
 
-  dnsServer.start(DNS_PORT, "*", IP);  // Redirect all domains to ESP32 IP
-
-  Serial.println("AP Mode - Connect to SMART_HOME_device_1");
-  Serial.print("Go to http://");
-  Serial.println(IP);
-
-  // Also ensure your server handles requests
   server.on("/", handleRoot);
   server.on("/save", handleSave);
   server.onNotFound([]() {
@@ -101,54 +92,86 @@ void startAPMode() {
   });
 
   server.begin();
-  
-  // Reiterate the current status and remind user on the serial monitor
-  Serial.println("Wi-Fi Configuration mode is active. Connect to the network with SSID: " + apSSID);
+  Serial.println("Wi-Fi Config Mode. Connect to: " + apSSID);
+  Serial.println("Open: http://" + IP.toString());
 }
 
+// ---------- MQTT Callback ----------
+void callback(char* topic, byte* payload, unsigned int length) {
+  String msg;
+  for (int i = 0; i < length; i++) msg += (char)payload[i];
 
-// ---------- Setup & Loop ----------
-void setup() {
-  Serial.begin(115200);
-  EEPROM.begin(EEPROM_SIZE);
+  if (String(topic) == baseTopic) {
+    Serial.println("Received bulk relay command:");
+    Serial.println(msg);
 
+    int relayIndex = -1;
+    int start = 0;
 
-  connectToWiFiFromEEPROM();  // Try connecting anyway
+    // Process line-by-line
+    while (start < msg.length()) {
+      int end = msg.indexOf('\n', start);
+      if (end == -1) end = msg.length();
 
-  if (WiFi.status() != WL_CONNECTED) {
-    startAPMode(); 
-  } else {
-    Serial.print("Connected to ");
-    Serial.println(WiFi.SSID());
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
-    client.setServer(mqtt_server, mqtt_port);
-    
+      String line = msg.substring(start, end);
+      start = end + 1;
+
+      line.trim(); // remove leading/trailing whitespace
+      if (line.startsWith("relay")) {
+        int eq = line.indexOf('=');
+        if (eq != -1) {
+          String key = line.substring(0, eq);
+          String value = line.substring(eq + 1);
+          value.trim();
+          int index = key.substring(5).toInt(); // from "relay1" → 1
+          if (index >= 1 && index <= 8) {
+            digitalWrite(relayPins[index - 1], value == "ON" ? LOW : HIGH);
+            Serial.printf("Relay %d → %s\n", index, value.c_str());
+          }
+        }
+      }
+    }
   }
 }
 
-
-
 void reconnectMQTT() {
   while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
+    Serial.print("Connecting to MQTT...");
     if (client.connect(mqtt_user, mqtt_user, mqtt_pass)) {
-      Serial.println("connected to iist mqtt");
-           
-       client.publish("smartHome/device_1/", "hii", true);
-    
-//      client.subscribe((baseTopic + "status").c_str());  // Subscribe to the status topic
+      Serial.println("connected");
+      client.subscribe(baseTopic.c_str());
     } else {
-      Serial.print(" failed, rc=");
+      Serial.print("failed (");
       Serial.print(client.state());
+      Serial.println("), retrying in 5s");
       delay(5000);
     }
   }
 }
 
+// ---------- Setup ----------
+void setup() {
+  Serial.begin(115200);
+  EEPROM.begin(EEPROM_SIZE);
 
+  for (int i = 0; i < 8; i++) {
+    pinMode(relayPins[i], OUTPUT);
+    digitalWrite(relayPins[i], HIGH); // default OFF (active LOW)
+  }
 
+  if (!connectToWiFiFromEEPROM()) {
+    startAPMode();
+  } else {
+    Serial.println("Connected to WiFi: " + WiFi.SSID());
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
 
+    client.setServer(mqtt_server, mqtt_port);
+    client.setCallback(callback);
+  }
+}
+
+// ---------- Loop ----------
 void loop() {
   dnsServer.processNextRequest();
 
@@ -157,9 +180,5 @@ void loop() {
   } else {
     if (!client.connected()) reconnectMQTT();
     client.loop();
-   
   }
-
-
-
 }
