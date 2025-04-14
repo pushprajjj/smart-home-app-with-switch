@@ -23,6 +23,8 @@ int relayPins[4] = { 5, 18, 19, 26 };  // Relay pins: GPIO 5, 18, 19, and 25
 int switchPins[4] = { 4, 16, 17, 25 };  // Switch pins: GPIO 0, 4, 13, and 23
 int lastSwitchStates[4];
 
+#define RESET_BUTTON_PIN 32  // Define the reset button pin
+
 // ---------- Objects ----------
 WebServer server(80);
 WiFiClient espClient;
@@ -59,14 +61,82 @@ bool connectToWiFiFromEEPROM() {
   return WiFi.status() == WL_CONNECTED;
 }
 
+
+void resetWiFiCredentials() {
+  EEPROM.begin(EEPROM_SIZE);
+  
+  // Reset SSID and password in EEPROM to empty values
+  for (int i = 0; i < 32; i++) EEPROM.write(i, 0);  // Clear SSID
+  for (int i = 0; i < 64; i++) EEPROM.write(32 + i, 0);  // Clear password
+  
+  EEPROM.commit();  // Save changes to EEPROM
+  Serial.println("Wi-Fi credentials reset!");
+}
+
+
 // ---------- Web Config ----------
 void handleRoot() {
-  String html = "<html><body><h2>ESP32 WiFi Config</h2>"
+  String html = "<html><head>"
+                "<style>"
+                "body {"
+                "  font-family: Arial, sans-serif;"
+                "  background-color: #f4f4f4;"
+                "  display: flex;"
+                "  justify-content: center;"
+                "  align-items: center;"
+                "  height: 100vh;"
+                "  margin: 0;"
+                "}"
+                "h2 {"
+                "  text-align: center;"
+                "  color: #333;"
+                "}"
+                ".form-container {"
+                "  background-color: white;"
+                "  padding: 20px;"
+                "  border-radius: 8px;"
+                "  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);"
+                "  max-width: 400px;"
+                "  width: 100%;"
+                "}"
+                "input[type='text'], input[type='password'] {"
+                "  width: 100%;"
+                "  padding: 10px;"
+                "  margin: 10px 0;"
+                "  border: 1px solid #ddd;"
+                "  border-radius: 4px;"
+                "  box-sizing: border-box;"
+                "}"
+                "input[type='submit'] {"
+                "  width: 100%;"
+                "  padding: 10px;"
+                "  background-color: #4CAF50;"
+                "  color: white;"
+                "  border: none;"
+                "  border-radius: 4px;"
+                "  cursor: pointer;"
+                "}"
+                "input[type='submit']:hover {"
+                "  background-color: #45a049;"
+                "}"
+                "@media (max-width: 480px) {"
+                "  .form-container {"
+                "    padding: 15px;"
+                "  }"
+                "}"
+                "</style>"
+                "</head><body>"
+                "<div class='form-container'>"
+                "<h2>ESP32 WiFi Config</h2>"
                 "<form action='/save' method='post'>"
-                "SSID: <input name='ssid'><br>"
-                "Password: <input name='pass' type='password'><br>"
+                "<label for='ssid'>SSID:</label>"
+                "<input name='ssid' type='text' placeholder='Enter SSID'><br>"
+                "<label for='pass'>Password:</label>"
+                "<input name='pass' type='password' placeholder='Enter Password'><br>"
                 "<input type='submit' value='Save & Reboot'>"
-                "</form></body></html>";
+                "</form>"
+                "</div>"
+                "</body></html>";
   server.send(200, "text/html", html);
 }
 
@@ -160,7 +230,7 @@ void setup() {
     pinMode(switchPins[i], INPUT_PULLUP);
     lastSwitchStates[i] = digitalRead(switchPins[i]);
   }
-
+ pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
 
   if (!connectToWiFiFromEEPROM()) {
     startAPMode();
@@ -219,7 +289,11 @@ void loop() {
   }
 
 
-
+if (digitalRead(RESET_BUTTON_PIN) == LOW) {
+    resetWiFiCredentials();
+    delay(1000);  // Debounce and avoid multiple triggers
+    ESP.restart();  // Reboot to enter AP mode for Wi-Fi configuration
+  }
 
   if (WiFi.status() != WL_CONNECTED) {
     server.handleClient();
