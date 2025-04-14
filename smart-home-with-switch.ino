@@ -76,127 +76,77 @@ void resetWiFiCredentials() {
 
 // ---------- Web Config ----------
 void handleRoot() {
-  String html = "<!DOCTYPE html><html lang='en'><head>"
-                "<meta charset='UTF-8'>"
-                "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
-                "<title>ESP32 WiFi Config</title>"
-                "<style>"
-                "body {"
-                "  background-color: #121212;"
-                "  color: #fff;"
-                "  font-family: Arial, sans-serif;"
-                "  margin: 0;"
-                "  padding: 0;"
-                "  display: flex;"
-                "  justify-content: center;"
-                "  align-items: center;"
-                "  height: 100vh;"
-                "  text-align: center;"
-                "  flex-direction: column;"
-                "}"
-                "h2 {"
-                "  color: #f39c12;"
-                "  font-size: 2rem;"
-                "  margin-bottom: 20px;" /* Adjusted spacing */
-                "}"
-                "form {"
-                "  background-color: #333;"
-                "  padding: 20px;"
-                "  border-radius: 8px;"
-                "  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);"
-                "  width: 100%;"
-                "  max-width: 400px;"
-                "  margin-top: 20px;"
-                "}"
-                "label {"
-                "  font-size: 1rem;"
-                "  margin-bottom: 8px;"
-                "  display: block;"
-                "}"
-                "select, input[type='password'] {"
-                "  background-color: #444;"
-                "  border: none;"
-                "  color: #fff;"
-                "  padding: 10px;"
-                "  border-radius: 4px;"
-                "  width: 100%;"
-                "  margin-bottom: 16px;"
-                "  font-size: 1rem;"
-                "}"
-                "input[type='submit'] {"
-                "  background-color: #f39c12;"
-                "  color: #fff;"
-                "  border: none;"
-                "  padding: 10px 20px;"
-                "  border-radius: 4px;"
-                "  cursor: pointer;"
-                "  width: 100%;"
-                "  font-size: 1rem;"
-                "  margin-top: 20px;"
-                "}"
-                "input[type='submit']:hover {"
-                "  background-color: #e67e22;"
-                "}"
-                ".loader {"
-                "  border: 4px solid #f3f3f3;"
-                "  border-top: 4px solid #3498db;"
-                "  border-radius: 50%;"
-                "  width: 40px;"
-                "  height: 40px;"
-                "  animation: spin 1.5s linear infinite;"
-                "  margin: 20px auto;"
-                "  display: none;"
-                "}"
-                "@keyframes spin {"
-                "  0% { transform: rotate(0deg); }"
-                "  100% { transform: rotate(360deg); }"
-                "}"
-                "@media (max-width: 600px) {"
-                "  h2 { font-size: 1.5rem; }"
-                "  form { padding: 15px; max-width: 90%; }"
-                "  label, select, input[type='password'], input[type='submit'] { font-size: 1.1rem; }"
-                "}"
-                "</style>"
-                "</head><body>"
-                "<h2>ESP32 WiFi Config</h2>";
+  String html = R"====(
+  <!DOCTYPE html><html lang='en'><head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>BYTE4GE SMART HOME</title>
+    <style>
+      body {
+        background-color: #121212; color: #fff; font-family: Arial, sans-serif;
+        margin: 0; padding: 0; display: flex; justify-content: center;
+        align-items: center; height: 100vh; flex-direction: column;
+      }
+      h2 { color: #f39c12; font-size: 2rem; margin-bottom: 20px; }
+       p { color: #f39c12;}
+      form {
+        background-color: #333; padding: 20px; border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2); width: 100%; max-width: 400px;
+        margin-top: 20px;
+      }
+      label { display: block; margin-bottom: 8px; }
+      select, input[type='password'] {
+        background-color: #444; border: none; color: #fff;
+        padding: 10px; border-radius: 4px; width: 100%;
+        margin-bottom: 16px; font-size: 1rem;
+      }
+      input[type='submit'] {
+        background-color: #f39c12; color: #fff; border: none;
+        padding: 10px 20px; border-radius: 4px; cursor: pointer;
+        width: 100%; font-size: 1rem; margin-top: 20px;
+      }
+      .loader {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #3498db;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1.5s linear infinite;
+        margin: 20px auto;
+      }
+      
+    </style>
+  </head><body>
+    <h2>CONNECT TO WIFI</h2>
+    <form action='/save' method='post' onsubmit='showLoader()'>
+      <label for='ssid'>Select Network:</label>
+      <select name='ssid' id='ssid'><option>Loading...</option></select>
+      <label for='pass'>Password:</label>
+      <input name='pass' type='password'>
+      <input type='submit' value='Save & Reboot'>
+    </form>
+    <p>Copyright Ⓒ 2023-24 Byte4ge (Sardar Enterprises) All Rights Reserved.</p>
+   
+    <script>
+   
+      async function loadNetworks() {
+        const res = await fetch('/networks');
+        const networks = await res.json();
+        const select = document.getElementById('ssid');
+        select.innerHTML = '';
+        networks.forEach(ssid => {
+          const opt = document.createElement('option');
+          opt.value = ssid;
+          opt.textContent = ssid;
+          select.appendChild(opt);
+        });
+      }
 
-  // Scan for available networks
-  int n = WiFi.scanNetworks();
-  if (n == 0) {
-    html += "<p>No networks found</p>";
-  } else {
-    html += "<form action='/save' method='post' onsubmit='showLoader()'>";
-    html += "<label for='ssid'>Select Network:</label>";
-    html += "<select name='ssid' id='ssid'>";
-    
-    // Add each found network to the dropdown
-    for (int i = 0; i < n; i++) {
-      html += "<option value='" + WiFi.SSID(i) + "'>" + WiFi.SSID(i) + "</option>";
-    }
+      loadNetworks();
+    </script>
+  </body></html>
+  )====";
 
-    html += "</select><br>";
-
-    // Password field
-    html += "<label for='pass'>Password:</label>";
-    html += "<input name='pass' type='password'><br>";
-
-    // Submit button
-    html += "<input type='submit' value='Save & Reboot'>";
-    html += "</form>";
-  }
-  
-  // Include the loader animation and JavaScript to close the page after submission
-  html += "<div id='loader' class='loader'></div>";
-  html += "<script>"
-          "function showLoader() {"
-          "  document.getElementById('loader').style.display = 'block';"
-          "  setTimeout(function() {"
-          "    window.close();"
-          "  }, 3000);"
-          "}"
-          "</script>";
-  
-  html += "</body></html>";
   server.send(200, "text/html", html);
 }
 
@@ -230,6 +180,18 @@ void handleSave() {
   } else {
     server.send(400, "text/plain", "Missing SSID or Password");
   }
+}
+
+
+void handleNetworks() {
+  int n = WiFi.scanNetworks();
+  String json = "[";
+  for (int i = 0; i < n; i++) {
+    json += "\"" + WiFi.SSID(i) + "\"";
+    if (i < n - 1) json += ",";
+  }
+  json += "]";
+  server.send(200, "application/json", json);
 }
 
 
@@ -313,6 +275,10 @@ void setup() {
     lastSwitchStates[i] = digitalRead(switchPins[i]);
   }
  pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
+
+server.on("/", handleRoot);
+server.on("/networks", handleNetworks);
+
 
   if (!connectToWiFiFromEEPROM()) {
     startAPMode();
