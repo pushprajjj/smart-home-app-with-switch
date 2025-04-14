@@ -171,7 +171,70 @@ void handleSave() {
     
     if (WiFi.status() == WL_CONNECTED) {
       Serial.println("Connected to Wi-Fi!");
-      server.send(200, "text/html", "<h3>Connected! Rebooting...</h3>");
+      server.send(200, "text/html", R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      background-color: #121212;
+      color: #ffffff;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      padding: 0;
+    }
+
+    .message-box {
+      background-color: #1f1f1f;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+      text-align: center;
+    }
+
+    .message-box h3 {
+      margin-bottom: 20px;
+    }
+
+    .close-btn {
+      background-color: #ff4c4c;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .close-btn:hover {
+      background-color: #ff1c1c;
+    }
+
+    @media (max-width: 600px) {
+      .message-box {
+        width: 90%;
+      }
+    }
+  </style>
+  <script>
+    setTimeout(() => window.close(), 5000);
+  </script>
+</head>
+<body>
+  <div class="message-box">
+    <h3>🎉 Connected! Rebooting...</h3>
+    <button class="close-btn" onclick="window.close()">Close</button>
+  </div>
+</body>
+</html>
+)rawliteral");
+
       delay(2000);
       ESP.restart();
     } else {
