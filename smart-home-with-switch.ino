@@ -17,9 +17,11 @@ const char* mqtt_pass = "testpass";
 String baseTopic = "smartHome/" + String(mqtt_user) + "/";
 
 // ---------- Relay Pins ----------
-int relayPins[8] = {5, 26, 18, 19, 21, 22, 23, 25};  // your relay pins
-int switchPins[8] = {32, 33, 34, 35, 36, 39, 14, 27};  // your manual switches
-int lastSwitchStates[8];
+
+
+int relayPins[4] = { 5, 18, 19, 26 };  // Relay pins: GPIO 5, 18, 19, and 25
+int switchPins[4] = { 4, 16, 17, 25 };  // Switch pins: GPIO 0, 4, 13, and 23
+int lastSwitchStates[4];
 
 // ---------- Objects ----------
 WebServer server(80);
@@ -115,7 +117,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     // Extract relay number
     int relayNum = topicStr.substring(strlen("smartHome/device_1/relay")).toInt();
 
-    if (relayNum >= 1 && relayNum <= 8) {
+    if (relayNum >= 1 && relayNum <= 4) {
       // Update the actual relay
       int relayPin = relayPins[relayNum - 1];
       if (msg == "ON") {
@@ -151,13 +153,13 @@ void setup() {
   Serial.begin(115200);
   EEPROM.begin(EEPROM_SIZE);
 
-for (int i = 0; i < 8; i++) {
-  pinMode(relayPins[i], OUTPUT);
-  digitalWrite(relayPins[i], HIGH); // OFF by default (active LOW)
+  for (int i = 0; i < 4; i++) {
+    pinMode(relayPins[i], OUTPUT);
+    digitalWrite(relayPins[i], HIGH); // OFF by default (active LOW)
 
-  pinMode(switchPins[i], INPUT_PULLUP);
-  lastSwitchStates[i] = digitalRead(switchPins[i]);
-}
+    pinMode(switchPins[i], INPUT_PULLUP);
+    lastSwitchStates[i] = digitalRead(switchPins[i]);
+  }
 
 
   if (!connectToWiFiFromEEPROM()) {
@@ -175,27 +177,46 @@ for (int i = 0; i < 8; i++) {
 // ---------- Loop ----------
 void loop() {
   dnsServer.processNextRequest();
+  for (int i = 0; i < 4; i++) {
+    int currentState = digitalRead(switchPins[i]);
 
-for (int i = 0; i < 8; i++) {
-  int currentState = digitalRead(switchPins[i]);
-  if (lastSwitchStates[i] == HIGH && currentState == LOW) {
-    int relayPin = relayPins[i];
-    bool currentRelayState = digitalRead(relayPin); // HIGH = OFF
-    digitalWrite(relayPin, !currentRelayState); // Toggle
+    // Check if the switch state has changed (debounced)
+    if (lastSwitchStates[i] == HIGH && currentState == LOW) {
+      // Build topic like: smartHome/device_1/relay1
+      String topic = baseTopic + "relay" + String(i + 1);
 
-    // Build topic like: smartHome/device_1/relay1=ON
-    String topic = baseTopic + "relay" + String(i + 1) + "=" + (!currentRelayState ? "ON" : "OFF");
+      digitalWrite(relayPins[i], LOW);
+      // Send the state of the switch to the MQTT broker
+      if (client.connected()) {
+        client.publish(topic.c_str(), "ON");
+      }
 
-    if (client.connected()) {
-      client.publish(topic.c_str(), "");
+      // Print to Serial for debugging
+      Serial.printf("Manual Update: Relay %d → OFF\n", i + 1);
+
+      delay(300);  // Debounce delay
+    }
+    // If the switch is ON (HIGH), send ON to MQTT
+    else if (lastSwitchStates[i] == LOW && currentState == HIGH) {
+      // Build topic like: smartHome/device_1/relay1
+      String topic = baseTopic + "relay" + String(i + 1);
+
+
+      digitalWrite(relayPins[i], HIGH);
+      // Send the state of the switch to the MQTT broker
+      if (client.connected()) {
+        client.publish(topic.c_str(), "OFF");
+      }
+
+      // Print to Serial for debugging
+      Serial.printf("Manual Update: Relay %d → ON\n", i + 1);
+
+      delay(300);  // Debounce delay
     }
 
-    Serial.printf("Manual Toggle: Relay %d → %s\n", i + 1, (!currentRelayState ? "ON" : "OFF"));
-
-    delay(300);  // Debounce
+    // Update the last switch state for the next iteration
+    lastSwitchStates[i] = currentState;
   }
-  lastSwitchStates[i] = currentState;
-}
 
 
 
