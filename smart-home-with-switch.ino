@@ -11,10 +11,12 @@ const byte DNS_PORT = 53;
 #define EEPROM_SIZE 96
 const char* mqtt_server = "server.iistbihar.com";
 const int mqtt_port = 1883;
-const char* mqtt_user = "device_1";
-const char* mqtt_pass = "testpass";
+const char* mqtt_user = "smart_home_devices";
+const char* mqtt_pass = "smart_home@763422";
 
-String baseTopic = "smartHome/" + String(mqtt_user) + "/";
+const char* device_id = "ESP32-B4G01"; 
+
+String baseTopic = "smartHome/" + String(device_id) + "/";
 
 // ---------- Relay Pins ----------
 
@@ -259,7 +261,7 @@ void handleNetworks() {
 
 
 void startAPMode() {
-  String apSSID = "SMART_HOME_" + String(mqtt_user);
+  String apSSID = "SMART_HOME_" + String(device_id);
   WiFi.softAP(apSSID.c_str());
 
   IPAddress IP = WiFi.softAPIP();
@@ -278,33 +280,38 @@ void startAPMode() {
 }
 
 // ---------- MQTT Callback ----------
+// Callback when MQTT message is received
 void callback(char* topic, byte* payload, unsigned int length) {
-  String msg;
-  for (int i = 0; i < length; i++) msg += (char)payload[i];
-
-  Serial.print("Incoming topic: ");
-  Serial.println(topic);
-  Serial.print("Payload: ");
-  Serial.println(msg);
-
   String topicStr = String(topic);
+  String msg;
 
-  // Check if topic starts with your base path
-  if (topicStr.startsWith("smartHome/device_1/relay")) {
-    // Extract relay number
-    int relayNum = topicStr.substring(strlen("smartHome/device_1/relay")).toInt();
+  for (unsigned int i = 0; i < length; i++) {
+    msg += (char)payload[i];
+  }
 
-    if (relayNum >= 1 && relayNum <= 4) {
-      // Update the actual relay
-      int relayPin = relayPins[relayNum - 1];
-      if (msg == "ON") {
-        digitalWrite(relayPin, LOW);  // Active LOW
-      } else if (msg == "OFF") {
-        digitalWrite(relayPin, HIGH);
+  Serial.println("Received topic: " + topicStr);
+  Serial.println("Message: " + msg);
+
+  // Check if the topic starts with the expected base
+  if (topicStr.startsWith(baseTopic)) {
+    String subTopic = topicStr.substring(baseTopic.length());  // e.g., relay1
+    if (subTopic.startsWith("relay")) {
+      int relayNum = subTopic.substring(5).toInt();  // Get the number after 'relay'
+      if (relayNum >= 1 && relayNum <= 4) {
+        int relayPin = relayPins[relayNum - 1];
+        if (msg == "ON") {
+          digitalWrite(relayPin, LOW);  // Active LOW
+        } else if (msg == "OFF") {
+          digitalWrite(relayPin, HIGH);
+        }
+
+        Serial.printf("Relay %d set to %s\n", relayNum, msg.c_str());
+      } else {
+        Serial.println("Invalid relay number");
       }
-
-      Serial.printf("Relay %d set to %s\n", relayNum, msg.c_str());
     }
+  } else {
+    Serial.println("MQTT topic not matching base topic");
   }
 }
 
@@ -313,7 +320,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
 void reconnectMQTT() {
   while (!client.connected()) {
     Serial.print("Connecting to MQTT...");
-    if (client.connect(mqtt_user, mqtt_user, mqtt_pass)) {
+    if (client.connect(device_id, mqtt_user, mqtt_pass)) {
       Serial.println("connected");
       client.subscribe((baseTopic + "#").c_str());
     } else {
@@ -350,7 +357,7 @@ server.on("/networks", handleNetworks);
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
 
-    client.setServer(mqtt_server, mqtt_port);
+    client.setServer(mqtt_server, mqtt_port);    
     client.setCallback(callback);
   }
 }
