@@ -11,8 +11,8 @@ const byte DNS_PORT = 53;
 #define EEPROM_SIZE 96
 const char* mqtt_server = "server.iistbihar.com";
 const int mqtt_port = 1883;
-const char* mqtt_user = "smart_home_devices";
-const char* mqtt_pass = "smart_home@763422";
+const char* mqtt_user = "Byte4geSmart";
+const char* mqtt_pass = "Byte4geSmart@7634";
 
 const char* device_id = "ESP32-B4G01"; 
 
@@ -320,9 +320,27 @@ void callback(char* topic, byte* payload, unsigned int length) {
 void reconnectMQTT() {
   while (!client.connected()) {
     Serial.print("Connecting to MQTT...");
-    if (client.connect(device_id, mqtt_user, mqtt_pass)) {
+
+    String statusTopic = baseTopic + "status";
+
+    // Connect with LWT
+    if (client.connect(
+          device_id,               // Client ID
+          mqtt_user, mqtt_pass,    // Username and password
+          statusTopic.c_str(),     // LWT topic
+          0,                       // QoS
+          true,                    // Retain flag
+          "offline"                // LWT message
+        )) {
+      
       Serial.println("connected");
+
+      // Publish online status
+      client.publish(statusTopic.c_str(), "online", true);  // Retained
+
+      // Subscribe to relevant topics
       client.subscribe((baseTopic + "#").c_str());
+
     } else {
       Serial.print("failed (");
       Serial.print(client.state());
@@ -331,6 +349,7 @@ void reconnectMQTT() {
     }
   }
 }
+
 
 // ---------- Setup ----------
 void setup() {
@@ -357,8 +376,32 @@ server.on("/networks", handleNetworks);
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
 
-    client.setServer(mqtt_server, mqtt_port);    
-    client.setCallback(callback);
+  client.setServer(mqtt_server, mqtt_port);   
+
+String statusTopic = baseTopic + "status";
+
+// Set the callback BEFORE anything else
+client.setCallback(callback);
+
+// Attempt to connect with LWT
+if (client.connect(
+      device_id,
+      mqtt_user, mqtt_pass,
+      statusTopic.c_str(), 0, true, "offline")) {
+
+  Serial.println("MQTT connected!");
+
+  // Publish online status
+  client.publish(statusTopic.c_str(), "online", true);
+
+  // Subscribe to all relevant topics under baseTopic
+  client.subscribe((baseTopic + "#").c_str());
+
+} else {
+  Serial.print("MQTT connection failed. State: ");
+  Serial.println(client.state());
+}
+
   }
 }
 
