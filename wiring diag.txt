@@ -1,0 +1,18 @@
+ESP32
+
+RELAY PINS
+
+RELAY-1 ------> 5
+RELAY-2 ------> 18
+RELAY-3 ------> 19
+RELAY-4 ------> 26
+
+SWITCH PINS
+
+SWITCH-1 ------> 4
+SWITCH-2 ------> 16
+SWITCH-3 ------> 17
+SWITCH-4 ------> 25
+
+WIFI RESET BUTTON ----> 32
+
