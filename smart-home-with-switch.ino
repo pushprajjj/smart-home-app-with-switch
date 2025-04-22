@@ -27,6 +27,10 @@ int lastSwitchStates[4];
 
 #define RESET_BUTTON_PIN 32  // Define the reset button pin
 
+
+unsigned long lastRSSIPublish = 0;
+const unsigned long rssiInterval = 10000;  // 10 seconds
+
 // ---------- Objects ----------
 WebServer server(80);
 WiFiClient espClient;
@@ -394,6 +398,13 @@ if (client.connect(
   // Publish online status
   client.publish(statusTopic.c_str(), "online", true);
 
+String IPtopic = baseTopic + "ipAddress";
+
+// Convert IP to string and then to char array
+String ipStr = WiFi.localIP().toString();
+client.publish(IPtopic.c_str(), ipStr.c_str(), true); // 'true' makes it a retained message
+
+
   // Subscribe to all relevant topics under baseTopic
   client.subscribe((baseTopic + "#").c_str());
 
@@ -462,4 +473,17 @@ if (digitalRead(RESET_BUTTON_PIN) == LOW) {
     if (!client.connected()) reconnectMQTT();
     client.loop();
   }
+  
+unsigned long now = millis();
+  if (now - lastRSSIPublish > rssiInterval) {
+    lastRSSIPublish = now;
+
+    long rssi = WiFi.RSSI();
+    String rssiStr = String(rssi);
+    String Wifidbm = baseTopic + "Wifidbm";
+    client.publish(Wifidbm.c_str(), rssiStr.c_str(), true);
+
+    Serial.println("Published WiFi RSSI: " + rssiStr);
+  }
+
 }
