@@ -430,7 +430,7 @@ void loop() {
       digitalWrite(relayPins[i], LOW);
       // Send the state of the switch to the MQTT broker
       if (client.connected()) {
-        client.publish(topic.c_str(), "ON");
+        client.publish(topic.c_str(), "ON", true); // Retained = true
       }
 
       // Print to Serial for debugging
@@ -447,7 +447,7 @@ void loop() {
       digitalWrite(relayPins[i], HIGH);
       // Send the state of the switch to the MQTT broker
       if (client.connected()) {
-        client.publish(topic.c_str(), "OFF");
+        client.publish(topic.c_str(), "OFF", true);
       }
 
       // Print to Serial for debugging
