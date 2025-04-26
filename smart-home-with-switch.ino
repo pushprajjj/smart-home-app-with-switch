@@ -21,8 +21,8 @@ String baseTopic = "smartHome/" + String(device_id) + "/";
 // ---------- Relay Pins ----------
 
 
-int relayPins[4] = { 5, 18, 19, 26 };  // Relay pins: GPIO 5, 18, 19, and 25
-int switchPins[4] = { 4, 16, 17, 25 };  // Switch pins: GPIO 0, 4, 13, and 23
+int relayPins[4] = { 5, 18, 19, 26 }; 
+int switchPins[4] = { 4, 16, 17, 25 };  
 int lastSwitchStates[4];
 
 #define RESET_BUTTON_PIN 32  // Define the reset button pin
